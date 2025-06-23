@@ -242,6 +242,115 @@ func main() {
 - `FileCallback` (func, required): Function called for each matching file
 - `ErrorCallback` (func): Function called when errors occur during traversal
 
+## Callback Functions
+
+### FileCallback
+
+The `FileCallback` function is called for each file that matches your patterns. It provides complete control over how files are processed.
+
+```go
+type FileCallback func(inputPath, outputPath string) (continueProcessing bool, err error)
+```
+
+**Parameters:**
+- `inputPath`: The full absolute path to the source file
+- `outputPath`: The suggested output path (maintains directory structure from input). You can modify this path as needed.
+
+**Return values:**
+- `continueProcessing`: If `false`, the entire crawl/watch operation will stop
+- `err`: If non-nil, triggers error handling and may stop processing
+
+**Example 1: Convert text files to uppercase**
+```go
+FileCallback: func(inputPath, outputPath string) (bool, error) {
+    // Read the input file
+    content, err := os.ReadFile(inputPath)
+    if err != nil {
+        return false, fmt.Errorf("failed to read file: %w", err)
+    }
+    
+    // Transform content to uppercase
+    upperContent := strings.ToUpper(string(content))
+    
+    // Modify output path to add .uc extension
+    outputPath = outputPath + ".uc"
+    
+    // Write the transformed content
+    err = os.WriteFile(outputPath, []byte(upperContent), 0644)
+    if err != nil {
+        return false, fmt.Errorf("failed to write file: %w", err)
+    }
+    
+    log.Printf("Converted %s -> %s", inputPath, outputPath)
+    return true, nil // Continue processing other files
+}
+```
+
+**Example 2: Image conversion with custom naming**
+```go
+FileCallback: func(inputPath, outputPath string) (bool, error) {
+    // Change extension to .webp
+    outputPath = strings.TrimSuffix(outputPath, filepath.Ext(outputPath)) + ".webp"
+    
+    // Your image conversion logic here
+    // convertToWebP(inputPath, outputPath)
+    
+    return true, nil
+}
+```
+
+**Example 3: Conditional processing**
+```go
+FileCallback: func(inputPath, outputPath string) (bool, error) {
+    // Skip files larger than 10MB
+    info, err := os.Stat(inputPath)
+    if err != nil {
+        return false, err
+    }
+    
+    if info.Size() > 10*1024*1024 {
+        log.Printf("Skipping large file: %s (%d bytes)", inputPath, info.Size())
+        return true, nil // Continue with next file
+    }
+    
+    // Process the file
+    return true, processFile(inputPath, outputPath)
+}
+```
+
+### ErrorCallback
+
+The `ErrorCallback` handles errors during directory traversal, giving you control over error recovery.
+
+```go
+type ErrorCallback func(path string, err error) (stop bool, retErr error)
+```
+
+**Parameters:**
+- `path`: The path where the error occurred
+- `err`: The error that occurred
+
+**Return values:**
+- `stop`: If `true`, stops the entire operation
+- `retErr`: If non-nil, this error is returned from Crawl/Watch (wrapped)
+
+**Example: Log errors but continue processing**
+```go
+ErrorCallback: func(path string, err error) (bool, error) {
+    // Log the error
+    log.Printf("Error at %s: %v", path, err)
+    
+    // Check if it's a permission error
+    if os.IsPermission(err) {
+        log.Printf("Skipping due to permission denied: %s", path)
+        return false, nil // Continue processing
+    }
+    
+    // Stop on other errors
+    return true, fmt.Errorf("critical error: %w", err)
+}
+```
+
 ## Pattern Syntax
 
 Patterns use minimatch-style glob syntax:
