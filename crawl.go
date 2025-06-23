@@ -1,4 +1,4 @@
-package filesmirror
+package mirrortransform
 
 import (
 	"context"
@@ -19,15 +19,15 @@ type fileTask struct {
 }
 
 // Crawl traverses the input directory and processes matching files.
-func (fm *filesMirror) Crawl(ctx context.Context) error {
+func (mt *mirrorTransform) Crawl(ctx context.Context) error {
 	// Check for circular references
-	if err := fm.checkCircularReference(); err != nil {
+	if err := mt.checkCircularReference(); err != nil {
 		return err
 	}
 
 	// Determine concurrency
-	concurrency := fm.config.Concurrency
-	maxConcurrency := fm.config.MaxConcurrency
+	concurrency := mt.config.Concurrency
+	maxConcurrency := mt.config.MaxConcurrency
 	if maxConcurrency <= 0 {
 		maxConcurrency = runtime.NumCPU()
 	}
@@ -38,7 +38,7 @@ func (fm *filesMirror) Crawl(ctx context.Context) error {
 	// Create channels for communication
 	taskChan := make(chan fileTask, 1000) // Buffered channel for better performance
 	errChan := make(chan error, 1)
-	
+
 	// WaitGroup to track all goroutines
 	var wg sync.WaitGroup
 
@@ -46,9 +46,9 @@ func (fm *filesMirror) Crawl(ctx context.Context) error {
 	processorCtx, cancelProcessors := context.WithCancel(ctx)
 	defer cancelProcessors()
 
-	for range concurrency {
+	for i := 0; i < concurrency; i++ {
 		wg.Add(1)
-		go fm.fileProcessor(processorCtx, taskChan, errChan, &wg)
+		go mt.fileProcessor(processorCtx, taskChan, errChan, &wg)
 	}
 
 	// Start directory scanner
@@ -56,8 +56,8 @@ func (fm *filesMirror) Crawl(ctx context.Context) error {
 	go func() {
 		defer wg.Done()
 		defer close(taskChan)
-		
-		if err := fm.scanDirectory(ctx, taskChan, errChan); err != nil {
+
+		if err := mt.scanDirectory(ctx, taskChan, errChan); err != nil {
 			select {
 			case errChan <- err:
 			case <-ctx.Done():
@@ -90,13 +90,13 @@ func (fm *filesMirror) Crawl(ctx context.Context) error {
 }
 
 // checkCircularReference checks if input and output directories would create a circular reference.
-func (fm *filesMirror) checkCircularReference() error {
-	inputAbs, err := filepath.Abs(fm.config.InputDir)
+func (mt *mirrorTransform) checkCircularReference() error {
+	inputAbs, err := filepath.Abs(mt.config.InputDir)
 	if err != nil {
 		return fmt.Errorf("failed to get absolute path of input directory: %w", err)
 	}
 
-	outputAbs, err := filepath.Abs(fm.config.OutputDir)
+	outputAbs, err := filepath.Abs(mt.config.OutputDir)
 	if err != nil {
 		return fmt.Errorf("failed to get absolute path of output directory: %w", err)
 	}
@@ -119,8 +119,8 @@ func (fm *filesMirror) checkCircularReference() error {
 }
 
 // scanDirectory recursively scans the directory and sends matching files to the task channel.
-func (fm *filesMirror) scanDirectory(ctx context.Context, taskChan chan<- fileTask, _ chan<- error) error {
-	return filepath.Walk(fm.config.InputDir, func(path string, info os.FileInfo, err error) error {
+func (mt *mirrorTransform) scanDirectory(ctx context.Context, taskChan chan<- fileTask, _ chan<- error) error {
+	return filepath.Walk(mt.config.InputDir, func(path string, info os.FileInfo, err error) error {
 		// Check context cancellation
 		select {
 		case <-ctx.Done():
@@ -130,8 +130,8 @@ func (fm *filesMirror) scanDirectory(ctx context.Context, taskChan chan<- fileTa
 
 		// Handle walk error
 		if err != nil {
-			if fm.config.ErrorCallback != nil {
-				stop, retErr := fm.config.ErrorCallback(path, err)
+			if mt.config.ErrorCallback != nil {
+				stop, retErr := mt.config.ErrorCallback(path, err)
 				if retErr != nil {
 					return fmt.Errorf("error callback failed at %q: %w", path, retErr)
 				}
@@ -145,13 +145,13 @@ func (fm *filesMirror) scanDirectory(ctx context.Context, taskChan chan<- fileTa
 		}
 
 		// Get relative path from input directory
-		relPath, err := filepath.Rel(fm.config.InputDir, path)
+		relPath, err := filepath.Rel(mt.config.InputDir, path)
 		if err != nil {
 			return fmt.Errorf("failed to get relative path for %q: %w", path, err)
 		}
 
 		// Check exclude patterns
-		for _, pattern := range fm.config.ExcludePatterns {
+		for _, pattern := range mt.config.ExcludePatterns {
 			match, err := doublestar.Match(pattern, relPath)
 			if err != nil {
 				return fmt.Errorf("invalid exclude pattern %q: %w", pattern, err)
@@ -171,7 +171,7 @@ func (fm *filesMirror) scanDirectory(ctx context.Context, taskChan chan<- fileTa
 
 		// Check if file matches any pattern
 		matched := false
-		for _, pattern := range fm.config.Patterns {
+		for _, pattern := range mt.config.Patterns {
 			match, err := doublestar.Match(pattern, relPath)
 			if err != nil {
 				return fmt.Errorf("invalid pattern %q: %w", pattern, err)
@@ -187,7 +187,7 @@ func (fm *filesMirror) scanDirectory(ctx context.Context, taskChan chan<- fileTa
 		}
 
 		// Create output path
-		outputPath := filepath.Join(fm.config.OutputDir, relPath)
+		outputPath := filepath.Join(mt.config.OutputDir, relPath)
 
 		// Send task to channel
 		select {
@@ -200,7 +200,7 @@ func (fm *filesMirror) scanDirectory(ctx context.Context, taskChan chan<- fileTa
 }
 
 // fileProcessor processes files from the task channel.
-func (fm *filesMirror) fileProcessor(ctx context.Context, taskChan <-chan fileTask, errChan chan<- error, wg *sync.WaitGroup) {
+func (mt *mirrorTransform) fileProcessor(ctx context.Context, taskChan <-chan fileTask, errChan chan<- error, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	for {
@@ -214,7 +214,7 @@ func (fm *filesMirror) fileProcessor(ctx context.Context, taskChan <-chan fileTa
 
 			// Ensure output directory exists
 			outputDir := filepath.Dir(task.outputPath)
-			if err := os.MkdirAll(outputDir, 0755); err != nil {
+			if err := os.MkdirAll(outputDir, 0o755); err != nil {
 				select {
 				case errChan <- fmt.Errorf("failed to create output directory %q: %w", outputDir, err):
 				case <-ctx.Done():
@@ -223,7 +223,7 @@ func (fm *filesMirror) fileProcessor(ctx context.Context, taskChan <-chan fileTa
 			}
 
 			// Call the file callback
-			continueProcessing, err := fm.config.FileCallback(task.inputPath, task.outputPath)
+			continueProcessing, err := mt.config.FileCallback(task.inputPath, task.outputPath)
 			if err != nil {
 				select {
 				case errChan <- fmt.Errorf("file callback failed for %q: %w", task.inputPath, err):
@@ -242,3 +242,4 @@ func (fm *filesMirror) fileProcessor(ctx context.Context, taskChan <-chan fileTa
 		}
 	}
 }
+

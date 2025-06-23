@@ -1,4 +1,4 @@
-package filesmirror
+package mirrortransform
 
 import (
 	"context"
@@ -42,9 +42,9 @@ func TestWatchBasic(t *testing.T) {
 		},
 	}
 
-	fm, err := NewFilesMirror(config)
+	mt, err := NewMirrorTransform(&config)
 	if err != nil {
-		t.Fatalf("Failed to create FilesMirror: %v", err)
+		t.Fatalf("Failed to create MirrorTransform: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -53,7 +53,7 @@ func TestWatchBasic(t *testing.T) {
 	// Start watching in background
 	watchErr := make(chan error, 1)
 	go func() {
-		watchErr <- fm.Watch(ctx)
+		watchErr <- mt.Watch(ctx)
 	}()
 
 	// Give watcher time to start
@@ -70,7 +70,7 @@ func TestWatchBasic(t *testing.T) {
 	for _, file := range testFiles {
 		path := filepath.Join(inputDir, file)
 		dir := filepath.Dir(path)
-		
+
 		// Create directory first if it doesn't exist
 		if _, err := os.Stat(dir); os.IsNotExist(err) {
 			if err := os.MkdirAll(dir, 0755); err != nil {
@@ -79,11 +79,11 @@ func TestWatchBasic(t *testing.T) {
 			// Give watcher time to detect new directory
 			time.Sleep(200 * time.Millisecond)
 		}
-		
+
 		if err := os.WriteFile(path, []byte("test content"), 0644); err != nil {
 			t.Fatalf("Failed to create file %s: %v", path, err)
 		}
-		
+
 		// Give watcher time to process
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -117,7 +117,7 @@ func TestWatchBasic(t *testing.T) {
 	for _, relPath := range expectedFiles {
 		inputPath := filepath.Join(inputDir, relPath)
 		outputPath := filepath.Join(outputDir, relPath)
-		
+
 		if processed, ok := processedFiles[inputPath]; !ok {
 			t.Errorf("File %s was not processed", inputPath)
 		} else if processed != outputPath {
@@ -166,16 +166,16 @@ func TestWatchFileModification(t *testing.T) {
 		},
 	}
 
-	fm, err := NewFilesMirror(config)
+	mt, err := NewMirrorTransform(&config)
 	if err != nil {
-		t.Fatalf("Failed to create FilesMirror: %v", err)
+		t.Fatalf("Failed to create MirrorTransform: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Start watching
-	go fm.Watch(ctx)
+	go mt.Watch(ctx)
 
 	// Give watcher time to start
 	time.Sleep(100 * time.Millisecond)
@@ -224,16 +224,16 @@ func TestWatchExcludePatterns(t *testing.T) {
 		},
 	}
 
-	fm, err := NewFilesMirror(config)
+	mt, err := NewMirrorTransform(&config)
 	if err != nil {
-		t.Fatalf("Failed to create FilesMirror: %v", err)
+		t.Fatalf("Failed to create MirrorTransform: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Start watching
-	go fm.Watch(ctx)
+	go mt.Watch(ctx)
 
 	// Give watcher time to start
 	time.Sleep(200 * time.Millisecond)
@@ -252,7 +252,7 @@ func TestWatchExcludePatterns(t *testing.T) {
 	for _, tf := range testFiles {
 		path := filepath.Join(inputDir, tf.path)
 		dir := filepath.Dir(path)
-		
+
 		// Create directory first if it doesn't exist
 		if _, err := os.Stat(dir); os.IsNotExist(err) {
 			if err := os.MkdirAll(dir, 0755); err != nil {
@@ -261,11 +261,11 @@ func TestWatchExcludePatterns(t *testing.T) {
 			// Give watcher time to detect new directory
 			time.Sleep(200 * time.Millisecond)
 		}
-		
+
 		if err := os.WriteFile(path, []byte("test"), 0644); err != nil {
 			t.Fatalf("Failed to create file %s: %v", path, err)
 		}
-		
+
 		// Give time for each file to be processed
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -280,7 +280,7 @@ func TestWatchExcludePatterns(t *testing.T) {
 	for _, tf := range testFiles {
 		path := filepath.Join(inputDir, tf.path)
 		processed := processedFiles[path]
-		
+
 		if tf.process && !processed {
 			t.Errorf("File %s should have been processed but wasn't", tf.path)
 		} else if !tf.process && processed {
@@ -312,18 +312,18 @@ func TestWatchContextCancellation(t *testing.T) {
 		FileCallback: func(inputPath, outputPath string) (bool, error) {
 			atomic.AddInt32(&processing, 1)
 			defer atomic.AddInt32(&processing, -1)
-			
+
 			// Simulate slow processing
 			time.Sleep(100 * time.Millisecond)
-			
+
 			atomic.AddInt32(&processed, 1)
 			return true, nil
 		},
 	}
 
-	fm, err := NewFilesMirror(config)
+	mt, err := NewMirrorTransform(&config)
 	if err != nil {
-		t.Fatalf("Failed to create FilesMirror: %v", err)
+		t.Fatalf("Failed to create MirrorTransform: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -331,7 +331,7 @@ func TestWatchContextCancellation(t *testing.T) {
 	// Start watching
 	watchDone := make(chan error, 1)
 	go func() {
-		watchDone <- fm.Watch(ctx)
+		watchDone <- mt.Watch(ctx)
 	}()
 
 	// Give watcher time to start
@@ -400,16 +400,16 @@ func TestWatchNewDirectory(t *testing.T) {
 		},
 	}
 
-	fm, err := NewFilesMirror(config)
+	mt, err := NewMirrorTransform(&config)
 	if err != nil {
-		t.Fatalf("Failed to create FilesMirror: %v", err)
+		t.Fatalf("Failed to create MirrorTransform: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Start watching
-	go fm.Watch(ctx)
+	go mt.Watch(ctx)
 
 	// Give watcher time to start
 	time.Sleep(100 * time.Millisecond)
@@ -464,9 +464,9 @@ func TestWatchFileCallbackError(t *testing.T) {
 		},
 	}
 
-	fm, err := NewFilesMirror(config)
+	mt, err := NewMirrorTransform(&config)
 	if err != nil {
-		t.Fatalf("Failed to create FilesMirror: %v", err)
+		t.Fatalf("Failed to create MirrorTransform: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -475,7 +475,7 @@ func TestWatchFileCallbackError(t *testing.T) {
 	// Start watching
 	watchErr := make(chan error, 1)
 	go func() {
-		watchErr <- fm.Watch(ctx)
+		watchErr <- mt.Watch(ctx)
 	}()
 
 	// Give watcher time to start

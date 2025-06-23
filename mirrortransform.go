@@ -1,4 +1,4 @@
-package filesmirror
+package mirrortransform
 
 import (
 	"context"
@@ -19,7 +19,7 @@ type FileCallback func(inputPath, outputPath string) (continueProcessing bool, e
 // If err is non-nil, it will be wrapped and returned from Crawl.
 type ErrorCallback func(path string, err error) (stop bool, retErr error)
 
-// Config holds the configuration for FilesMirror.
+// Config holds the configuration for MirrorTransform.
 type Config struct {
 	// InputDir is the root directory to scan for files.
 	InputDir string
@@ -50,9 +50,9 @@ type Config struct {
 	ErrorCallback ErrorCallback
 }
 
-// FilesMirror provides functionality to mirror files from one directory
+// MirrorTransform provides functionality to mirror files from one directory
 // to another while maintaining the directory structure.
-type FilesMirror interface {
+type MirrorTransform interface {
 	// Crawl traverses the input directory and processes matching files.
 	// It respects the context for cancellation.
 	Crawl(ctx context.Context) error
@@ -62,13 +62,13 @@ type FilesMirror interface {
 	Watch(ctx context.Context) error
 }
 
-// filesMirror is the concrete implementation of FilesMirror.
-type filesMirror struct {
+// mirrorTransform is the concrete implementation of MirrorTransform.
+type mirrorTransform struct {
 	config Config
 }
 
-// NewFilesMirror creates a new FilesMirror instance with the given configuration.
-func NewFilesMirror(config Config) (FilesMirror, error) {
+// NewMirrorTransform creates a new MirrorTransform instance with the given configuration.
+func NewMirrorTransform(config *Config) (MirrorTransform, error) {
 	// Validate configuration
 	if config.InputDir == "" {
 		return nil, fmt.Errorf("input directory is required")
@@ -87,7 +87,8 @@ func NewFilesMirror(config Config) (FilesMirror, error) {
 	config.InputDir = filepath.Clean(config.InputDir)
 	config.OutputDir = filepath.Clean(config.OutputDir)
 
-	return &filesMirror{
-		config: config,
+	return &mirrorTransform{
+		config: *config,
 	}, nil
 }
+

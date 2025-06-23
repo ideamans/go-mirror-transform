@@ -1,0 +1,110 @@
+linters:
+  enable:
+    - gofmt
+    - golint
+    - govet
+    - errcheck
+    - staticcheck
+    - unused
+    - gosimple
+    - structcheck
+    - varcheck
+    - ineffassign
+    - deadcode
+    - typecheck
+    - gosec
+    - megacheck
+    - misspell
+    - unparam
+    - dogsled
+    - prealloc
+    - scopelint
+    - gocritic
+    - gochecknoinits
+    - gochecknoglobals
+    - godox
+    - funlen
+    - whitespace
+    - wsl
+    - goprintffuncname
+    - gomnd
+    - goerr113
+    - gomodguard
+    - godot
+    - testpackage
+    - nestif
+    - exportloopref
+    - exhaustive
+    - sqlclosecheck
+    - nolintlint
+    - paralleltest
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+  govet:
+    check-shadowing: true
+  golint:
+    min-confidence: 0.8
+  gofmt:
+    simplify: true
+  gocyclo:
+    min-complexity: 15
+  maligned:
+    suggest-new: true
+  dupl:
+    threshold: 100
+  goconst:
+    min-len: 2
+    min-occurrences: 2
+  misspell:
+    locale: US
+  lll:
+    line-length: 140
+  goimports:
+    local-prefixes: github.com/ideamans/go-files-mirror
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - experimental
+      - opinionated
+      - performance
+      - style
+  funlen:
+    lines: 100
+    statements: 50
+
+issues:
+  exclude-rules:
+    # Exclude some linters from running on tests files.
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - errcheck
+        - dupl
+        - gosec
+        - funlen
+
+    # Exclude known linters from partially hard-vendored code,
+    # which is impossible to exclude via "nolint" comments.
+    - path: pkg/mod/
+      text: ".*"
+
+  # Maximum issues count per one linter. Set to 0 to disable. Default is 50.
+  max-issues-per-linter: 0
+
+  # Maximum count of issues with the same text. Set to 0 to disable. Default is 3.
+  max-same-issues: 0
+
+run:
+  timeout: 5m
+  tests: true
+  build-tags:
+    - integration
+  skip-dirs:
+    - vendor
+    - third_party
+  skip-files:
+    - ".*\\.pb\\.go"
+    - ".*\\.gen\\.go"

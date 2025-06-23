@@ -1,4 +1,4 @@
-package filesmirror
+package mirrortransform
 
 import (
 	"context"
@@ -14,9 +14,9 @@ import (
 
 // Watch monitors the input directory for changes and processes new/modified files.
 // This method blocks until the context is cancelled.
-func (fm *filesMirror) Watch(ctx context.Context) error {
+func (mt *mirrorTransform) Watch(ctx context.Context) error {
 	// Check for circular references
-	if err := fm.checkCircularReference(); err != nil {
+	if err := mt.checkCircularReference(); err != nil {
 		return err
 	}
 
@@ -28,8 +28,8 @@ func (fm *filesMirror) Watch(ctx context.Context) error {
 	defer watcher.Close()
 
 	// Determine concurrency
-	concurrency := fm.config.Concurrency
-	maxConcurrency := fm.config.MaxConcurrency
+	concurrency := mt.config.Concurrency
+	maxConcurrency := mt.config.MaxConcurrency
 	if maxConcurrency <= 0 {
 		maxConcurrency = runtime.NumCPU()
 	}
@@ -40,7 +40,7 @@ func (fm *filesMirror) Watch(ctx context.Context) error {
 	// Create channels for communication
 	taskChan := make(chan fileTask, 1000)
 	errChan := make(chan error, 1)
-	
+
 	// WaitGroup to track all goroutines
 	var wg sync.WaitGroup
 
@@ -48,13 +48,13 @@ func (fm *filesMirror) Watch(ctx context.Context) error {
 	processorCtx, cancelProcessors := context.WithCancel(ctx)
 	defer cancelProcessors()
 
-	for range concurrency {
+	for i := 0; i < concurrency; i++ {
 		wg.Add(1)
-		go fm.fileProcessor(processorCtx, taskChan, errChan, &wg)
+		go mt.fileProcessor(processorCtx, taskChan, errChan, &wg)
 	}
 
 	// Add directories to watch
-	if err := fm.addWatchDirs(watcher); err != nil {
+	if err := mt.addWatchDirs(watcher); err != nil {
 		return fmt.Errorf("failed to add watch directories: %w", err)
 	}
 
@@ -62,7 +62,7 @@ func (fm *filesMirror) Watch(ctx context.Context) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		fm.handleWatchEvents(processorCtx, watcher, taskChan, errChan)
+		mt.handleWatchEvents(processorCtx, watcher, taskChan, errChan)
 	}()
 
 	// Wait for completion or error
@@ -90,11 +90,11 @@ func (fm *filesMirror) Watch(ctx context.Context) error {
 }
 
 // addWatchDirs recursively adds directories to the watcher.
-func (fm *filesMirror) addWatchDirs(watcher *fsnotify.Watcher) error {
-	return filepath.Walk(fm.config.InputDir, func(path string, info os.FileInfo, err error) error {
+func (mt *mirrorTransform) addWatchDirs(watcher *fsnotify.Watcher) error {
+	return filepath.Walk(mt.config.InputDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			if fm.config.ErrorCallback != nil {
-				stop, retErr := fm.config.ErrorCallback(path, err)
+			if mt.config.ErrorCallback != nil {
+				stop, retErr := mt.config.ErrorCallback(path, err)
 				if retErr != nil {
 					return fmt.Errorf("error callback failed at %q: %w", path, retErr)
 				}
@@ -112,14 +112,14 @@ func (fm *filesMirror) addWatchDirs(watcher *fsnotify.Watcher) error {
 		}
 
 		// Get relative path from input directory
-		relPath, err := filepath.Rel(fm.config.InputDir, path)
+		relPath, err := filepath.Rel(mt.config.InputDir, path)
 		if err != nil {
 			return fmt.Errorf("failed to get relative path for %q: %w", path, err)
 		}
 
 		// Check exclude patterns for directories
 		if relPath != "." {
-			for _, pattern := range fm.config.ExcludePatterns {
+			for _, pattern := range mt.config.ExcludePatterns {
 				match, err := doublestar.Match(pattern, relPath)
 				if err != nil {
 					return fmt.Errorf("invalid exclude pattern %q: %w", pattern, err)
@@ -140,7 +140,7 @@ func (fm *filesMirror) addWatchDirs(watcher *fsnotify.Watcher) error {
 }
 
 // handleWatchEvents handles file system events from the watcher.
-func (fm *filesMirror) handleWatchEvents(ctx context.Context, watcher *fsnotify.Watcher, taskChan chan<- fileTask, errChan chan<- error) {
+func (mt *mirrorTransform) handleWatchEvents(ctx context.Context, watcher *fsnotify.Watcher, taskChan chan<- fileTask, errChan chan<- error) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -154,7 +154,7 @@ func (fm *filesMirror) handleWatchEvents(ctx context.Context, watcher *fsnotify.
 			}
 
 			// Handle the event
-			if err := fm.processWatchEvent(ctx, watcher, event, taskChan); err != nil {
+			if err := mt.processWatchEvent(ctx, watcher, event, taskChan); err != nil {
 				select {
 				case errChan <- err:
 				case <-ctx.Done():
@@ -169,8 +169,8 @@ func (fm *filesMirror) handleWatchEvents(ctx context.Context, watcher *fsnotify.
 				return
 			}
 
-			if fm.config.ErrorCallback != nil {
-				stop, retErr := fm.config.ErrorCallback("watcher", err)
+			if mt.config.ErrorCallback != nil {
+				stop, retErr := mt.config.ErrorCallback("watcher", err)
 				if retErr != nil {
 					select {
 					case errChan <- fmt.Errorf("error callback failed: %w", retErr):
@@ -200,7 +200,7 @@ func (fm *filesMirror) handleWatchEvents(ctx context.Context, watcher *fsnotify.
 }
 
 // processWatchEvent processes a single file system event.
-func (fm *filesMirror) processWatchEvent(ctx context.Context, watcher *fsnotify.Watcher, event fsnotify.Event, taskChan chan<- fileTask) error {
+func (mt *mirrorTransform) processWatchEvent(ctx context.Context, watcher *fsnotify.Watcher, event fsnotify.Event, taskChan chan<- fileTask) error {
 	// Ignore remove and rename events
 	if event.Op&(fsnotify.Remove|fsnotify.Rename) != 0 {
 		return nil
@@ -213,8 +213,8 @@ func (fm *filesMirror) processWatchEvent(ctx context.Context, watcher *fsnotify.
 		if os.IsNotExist(err) {
 			return nil
 		}
-		if fm.config.ErrorCallback != nil {
-			stop, retErr := fm.config.ErrorCallback(event.Name, err)
+		if mt.config.ErrorCallback != nil {
+			stop, retErr := mt.config.ErrorCallback(event.Name, err)
 			if retErr != nil {
 				return fmt.Errorf("error callback failed at %q: %w", event.Name, retErr)
 			}
@@ -229,13 +229,13 @@ func (fm *filesMirror) processWatchEvent(ctx context.Context, watcher *fsnotify.
 	// If it's a new directory, add it to the watcher
 	if info.IsDir() {
 		// Check if we need to watch this directory
-		relPath, err := filepath.Rel(fm.config.InputDir, event.Name)
+		relPath, err := filepath.Rel(mt.config.InputDir, event.Name)
 		if err != nil {
 			return fmt.Errorf("failed to get relative path for %q: %w", event.Name, err)
 		}
 
 		// Check exclude patterns
-		for _, pattern := range fm.config.ExcludePatterns {
+		for _, pattern := range mt.config.ExcludePatterns {
 			match, err := doublestar.Match(pattern, relPath)
 			if err != nil {
 				return fmt.Errorf("invalid exclude pattern %q: %w", pattern, err)
@@ -253,13 +253,13 @@ func (fm *filesMirror) processWatchEvent(ctx context.Context, watcher *fsnotify.
 	}
 
 	// Process file event
-	relPath, err := filepath.Rel(fm.config.InputDir, event.Name)
+	relPath, err := filepath.Rel(mt.config.InputDir, event.Name)
 	if err != nil {
 		return fmt.Errorf("failed to get relative path for %q: %w", event.Name, err)
 	}
 
 	// Check exclude patterns
-	for _, pattern := range fm.config.ExcludePatterns {
+	for _, pattern := range mt.config.ExcludePatterns {
 		match, err := doublestar.Match(pattern, relPath)
 		if err != nil {
 			return fmt.Errorf("invalid exclude pattern %q: %w", pattern, err)
@@ -271,7 +271,7 @@ func (fm *filesMirror) processWatchEvent(ctx context.Context, watcher *fsnotify.
 
 	// Check if file matches any pattern
 	matched := false
-	for _, pattern := range fm.config.Patterns {
+	for _, pattern := range mt.config.Patterns {
 		match, err := doublestar.Match(pattern, relPath)
 		if err != nil {
 			return fmt.Errorf("invalid pattern %q: %w", pattern, err)
@@ -287,7 +287,7 @@ func (fm *filesMirror) processWatchEvent(ctx context.Context, watcher *fsnotify.
 	}
 
 	// Create output path
-	outputPath := filepath.Join(fm.config.OutputDir, relPath)
+	outputPath := filepath.Join(mt.config.OutputDir, relPath)
 
 	// Send task to channel
 	select {
@@ -297,3 +297,4 @@ func (fm *filesMirror) processWatchEvent(ctx context.Context, watcher *fsnotify.
 		return ctx.Err()
 	}
 }
+

@@ -1,4 +1,4 @@
-package filesmirror_test
+package mirrortransform_test
 
 import (
 	"context"
@@ -7,13 +7,13 @@ import (
 	"log"
 	"os"
 
-	"github.com/ideamans/go-files-mirror"
+	mirrortransform "github.com/ideamans/go-mirror-transform"
 )
 
-// ExampleFilesMirror_Crawl demonstrates basic usage of FilesMirror.
-func ExampleFilesMirror_Crawl() {
+// ExampleMirrorTransform_Crawl demonstrates basic usage of MirrorTransform.
+func ExampleMirrorTransform_Crawl() {
 	// Configure the mirror
-	config := filesmirror.Config{
+	config := mirrortransform.Config{
 		InputDir:    "images",
 		OutputDir:   "output",
 		Patterns:    []string{"**/*.jpg", "**/*.jpeg", "**/*.png", "**/*.gif"},
@@ -22,7 +22,7 @@ func ExampleFilesMirror_Crawl() {
 			// In a real scenario, you might convert images here
 			// For this example, we'll just copy the file
 			fmt.Printf("Processing: %s -> %s.webp\n", inputPath, outputPath)
-			
+
 			// Example: Copy file (in practice, you'd convert to WebP)
 			src, err := os.Open(inputPath)
 			if err != nil {
@@ -42,14 +42,14 @@ func ExampleFilesMirror_Crawl() {
 	}
 
 	// Create the mirror
-	fm, err := filesmirror.NewFilesMirror(config)
+	mt, err := mirrortransform.NewMirrorTransform(&config)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// Start crawling
 	ctx := context.Background()
-	if err := fm.Crawl(ctx); err != nil {
+	if err := mt.Crawl(ctx); err != nil {
 		log.Fatal(err)
 	}
 }

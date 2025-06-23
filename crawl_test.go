@@ -1,4 +1,4 @@
-package filesmirror
+package mirrortransform
 
 import (
 	"context"
@@ -46,13 +46,13 @@ func TestCrawlBasic(t *testing.T) {
 		},
 	}
 
-	fm, err := NewFilesMirror(config)
+	mt, err := NewMirrorTransform(&config)
 	if err != nil {
-		t.Fatalf("Failed to create FilesMirror: %v", err)
+		t.Fatalf("Failed to create MirrorTransform: %v", err)
 	}
 
 	ctx := context.Background()
-	if err := fm.Crawl(ctx); err != nil {
+	if err := mt.Crawl(ctx); err != nil {
 		t.Fatalf("Crawl failed: %v", err)
 	}
 
@@ -72,7 +72,7 @@ func TestCrawlBasic(t *testing.T) {
 	for _, relPath := range expectedFiles {
 		inputPath := filepath.Join(inputDir, relPath)
 		outputPath := filepath.Join(outputDir, relPath)
-		
+
 		if processed, ok := processedFiles[inputPath]; !ok {
 			t.Errorf("File %s was not processed", inputPath)
 		} else if processed != outputPath {
@@ -115,13 +115,13 @@ func TestCrawlExcludePatterns(t *testing.T) {
 		},
 	}
 
-	fm, err := NewFilesMirror(config)
+	mt, err := NewMirrorTransform(&config)
 	if err != nil {
-		t.Fatalf("Failed to create FilesMirror: %v", err)
+		t.Fatalf("Failed to create MirrorTransform: %v", err)
 	}
 
 	ctx := context.Background()
-	if err := fm.Crawl(ctx); err != nil {
+	if err := mt.Crawl(ctx); err != nil {
 		t.Fatalf("Crawl failed: %v", err)
 	}
 
@@ -174,19 +174,19 @@ func TestCrawlConcurrency(t *testing.T) {
 
 					// Simulate some work
 					time.Sleep(10 * time.Millisecond)
-					
+
 					atomic.AddInt32(&processedCount, 1)
 					return true, nil
 				},
 			}
 
-			fm, err := NewFilesMirror(config)
+			mt, err := NewMirrorTransform(&config)
 			if err != nil {
-				t.Fatalf("Failed to create FilesMirror: %v", err)
+				t.Fatalf("Failed to create MirrorTransform: %v", err)
 			}
 
 			ctx := context.Background()
-			if err := fm.Crawl(ctx); err != nil {
+			if err := mt.Crawl(ctx); err != nil {
 				t.Fatalf("Crawl failed: %v", err)
 			}
 
@@ -226,26 +226,26 @@ func TestCrawlContextCancellation(t *testing.T) {
 		FileCallback: func(inputPath, outputPath string) (bool, error) {
 			// Simulate slow processing
 			time.Sleep(50 * time.Millisecond)
-			
+
 			atomic.AddInt32(&processedCount, 1)
 			return true, nil
 		},
 	}
 
-	fm, err := NewFilesMirror(config)
+	mt, err := NewMirrorTransform(&config)
 	if err != nil {
-		t.Fatalf("Failed to create FilesMirror: %v", err)
+		t.Fatalf("Failed to create MirrorTransform: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	// Cancel after a short time
 	go func() {
 		time.Sleep(100 * time.Millisecond)
 		cancel()
 	}()
 
-	err = fm.Crawl(ctx)
+	err = mt.Crawl(ctx)
 	if err != context.Canceled {
 		t.Errorf("Expected context.Canceled error, got %v", err)
 	}
@@ -265,12 +265,12 @@ func TestCrawlCircularReference(t *testing.T) {
 	t.Parallel()
 	testDir := t.TempDir()
 	inputDir := filepath.Join(testDir, "input")
-	
+
 	// Create the input directory
 	if err := os.MkdirAll(inputDir, 0755); err != nil {
 		t.Fatalf("Failed to create input directory: %v", err)
 	}
-	
+
 	tests := []struct {
 		name      string
 		outputDir string
@@ -305,12 +305,12 @@ func TestCrawlCircularReference(t *testing.T) {
 				},
 			}
 
-			fm, err := NewFilesMirror(config)
+			mt, err := NewMirrorTransform(&config)
 			if err != nil {
-				t.Fatalf("Failed to create FilesMirror: %v", err)
+				t.Fatalf("Failed to create MirrorTransform: %v", err)
 			}
 
-			err = fm.Crawl(context.Background())
+			err = mt.Crawl(context.Background())
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Crawl() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -352,22 +352,22 @@ func TestCrawlErrorHandling(t *testing.T) {
 		},
 	}
 
-	fm, err := NewFilesMirror(config)
+	mt, err := NewMirrorTransform(&config)
 	if err != nil {
-		t.Fatalf("Failed to create FilesMirror: %v", err)
+		t.Fatalf("Failed to create MirrorTransform: %v", err)
 	}
 
 	// With error callback, should not return error
-	err = fm.Crawl(context.Background())
+	err = mt.Crawl(context.Background())
 	if err == nil {
 		t.Error("Expected error from file callback")
 	}
 
 	// Now test without error callback
 	config.ErrorCallback = nil
-	fm, _ = NewFilesMirror(config)
-	
-	err = fm.Crawl(context.Background())
+	mt, _ = NewMirrorTransform(&config)
+
+	err = mt.Crawl(context.Background())
 	if err == nil {
 		t.Error("Expected error without error callback")
 	}
@@ -400,12 +400,12 @@ func TestCrawlStopOnCallbackFalse(t *testing.T) {
 		},
 	}
 
-	fm, err := NewFilesMirror(config)
+	mt, err := NewMirrorTransform(&config)
 	if err != nil {
-		t.Fatalf("Failed to create FilesMirror: %v", err)
+		t.Fatalf("Failed to create MirrorTransform: %v", err)
 	}
 
-	err = fm.Crawl(context.Background())
+	err = mt.Crawl(context.Background())
 	if err == nil {
 		t.Error("Expected error when callback returns false")
 	}
@@ -421,19 +421,19 @@ func createTestFiles(t *testing.T, baseDir string, files []string) {
 	for _, file := range files {
 		path := filepath.Join(baseDir, file)
 		dir := filepath.Dir(path)
-		
+
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			t.Fatalf("Failed to create directory %s: %v", dir, err)
 		}
-		
+
 		if err := os.WriteFile(path, []byte("test content"), 0644); err != nil {
 			t.Fatalf("Failed to create file %s: %v", path, err)
 		}
 	}
 }
 
-// TestNewFilesMirrorValidation tests configuration validation.
-func TestNewFilesMirrorValidation(t *testing.T) {
+// TestNewMirrorTransformValidation tests configuration validation.
+func TestNewMirrorTransformValidation(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -481,9 +481,9 @@ func TestNewFilesMirrorValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := NewFilesMirror(tt.config)
+			_, err := NewMirrorTransform(&tt.config)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("NewFilesMirror() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("NewMirrorTransform() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
