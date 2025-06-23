@@ -91,4 +91,3 @@ func NewMirrorTransform(config *Config) (MirrorTransform, error) {
 		config: *config,
 	}, nil
 }
-

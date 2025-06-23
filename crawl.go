@@ -242,4 +242,3 @@ func (mt *mirrorTransform) fileProcessor(ctx context.Context, taskChan <-chan fi
 		}
 	}
 }
-

@@ -1,93 +1,119 @@
-# このパッケージは
+# CLAUDE.md
 
-あるディレクトリの配下にある、Minimatch で合致するファイルを走査し、それを別のディレクトリを起点にディレクトリの相対的な構造を保ったまま、複製を作る機構を提供します。
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## 例
+## Package Overview
 
-- images/
-  - dir1/
-    - file1.jpg
-    - file2.png
-  - file3.jpg
-  - file4.txt
+This is `go-mirror-transform` (formerly `go-files-mirror`), a Go package for mirroring files from one directory to another while maintaining directory structure. The package supports pattern matching, concurrent processing, and file watching capabilities.
 
-起点ディレクトリは input, pattern は`**/*.jpg, **/*.jpeg, **/*.png, **/*.gif`、コールバックも受け取り、マネージャーを作成する。
+**Module name**: `github.com/ideamans/go-mirror-transform`
 
-manager.Crawl()を実行するとディレクトリを操作してコールバックを呼び出す。
+## Development Commands
 
-func Callback(inputPath, outputPath string) (continue bool, err error) {
-// inputPath を outputPath に加工して出力する
-// outputPath の dirname は確保済みであることを担保する
-// continue が false の場合、その場でスキャンを終了する
-// err は、Craw 自体の戻り値エラーでラップされる
-return true, nil
-}
+### Running Tests
+```bash
+# Run all tests with race detection
+make test
 
-以下のように WebP に変換した画像を用意できる。
+# Run tests with coverage report
+make coverage
 
-- output/
-  - dir1/
-    - file1.jpg.webp
-    - file2.png.webp
-  - file3.jpg.webp
+# Run a single test
+go test -v -run TestCrawlBasic ./...
 
-# インターフェース
+# Run tests for different concurrency levels (1, 2, 4)
+go test -v -run TestCrawlConcurrency ./...
+```
 
-- NewFilesMirror
-- type FilesMirror interface
+### Code Quality
+```bash
+# Run golangci-lint
+make lint
 
-# クロール機能
+# Format code
+make fmt
 
-- トレイリングスラッシュ
-  - ディレクトリの末尾のスラッシュ、バックスラッシュの有無など適切に調整する
-- 循環参照の予防
-  - output が input の中にある場合や、念のため input が output の中にある場合も考慮する
-- エラーハンドリングのコールバック
-  - ディレクトリ走査中にエラーが発生した場合もその位置とエラーを渡してコールバックを呼び出す
-  - stop bool が true なら、そこで操作を中断する
-  - error が指定された場合はそれを Crawl の戻り値にラップする
-- 並列処理をサポート
-  - concurrency として指定
-  - MaxConcurrency も指定できる。デフォルト値は CPU コア数
-  - 実際の並列度は Cuncurrency と MaxConcurrency の小さい方
-  - ディレクトリスキャンをしながら、concurrency で並列化されたコールバック実行を続ける
-  - スキャンの並列と、コールバックの並列はそれぞれ異なる。並列スキャン群はディレクトリだけをスキャンし、ファイル処理のタスクをチャネルに送る。ファイル処理はチャネルからメッセージを受けて並列に実行する。スキャンとコールバックが同一の goroutine だと、ディレクトリの形状によってバランスよく並列化されないおそれがあるため。
-  - スキャンとファイル処理の間のチャネルには 1000 件程度のバッファがあってよい。
-- Graceful Shutdown
-  - キャンセルがかかると、現在のコールバックが安全に終了するのを待って終了する
-  - Context などを用い、Ctrl+C が押されると安全に現在の処理の終了を待ってからプロセスを終了するユースケースを想定する。
-- 除外パターン
-  - Except パターンも指定できる。ディレクトリやファイルがそれらに合致する場合、走査を中断する。
+# Check for vulnerabilities
+make vuln
+```
 
-# ウォッチ機能
+### Benchmarks
+```bash
+make bench
+```
 
-- Watch で input ディレクトリを再起的に監視し、ファイルの作成や更新があったら、対応する output ディレクトリを作成し、ファイル変換コールバックを呼び出す。
-- こちらも Graceful Shutdown に対応し、Ctrl+C によるキャンセルのユースケースに対し、新規の監視通知を止めたあとで、既存の処理が安全に終了するのを待ってプロセスを終了する。
+## Architecture Overview
 
-# ライブラリ
+### Core Components
 
-必要なライブラリは随時 go get する。
+1. **MirrorTransform Interface** (`mirrortransform.go`)
+   - Main interface with `Crawl()` and `Watch()` methods
+   - Configuration via `Config` struct passed by pointer to `NewMirrorTransform()`
+   - Uses callback pattern for file processing and error handling
 
-# テスト
+2. **Crawl Implementation** (`crawl.go`)
+   - Two-level parallelism design:
+     - Directory scanning goroutines that traverse the filesystem
+     - File processor worker pool that handles matched files
+   - Uses buffered channel (size 1000) for task communication
+   - Implements circular reference prevention between input/output directories
+   - Graceful shutdown via context cancellation
 
-- 並列度
-  - 1, 2, 4 でテストする
+3. **Watch Implementation** (`watch.go`)
+   - Uses `fsnotify` for file system event monitoring
+   - Automatically watches new directories as they're created
+   - Same file processor pool pattern as Crawl
+   - Handles file creation, modification events (ignores remove/rename)
 
-# CI
+### Concurrency Model
 
-## lint ジョブ
+The package uses a sophisticated concurrency model:
+- Directory scanners and file processors run in separate goroutine pools
+- This prevents imbalanced directory structures from causing inefficient parallelization
+- Actual concurrency is `min(Config.Concurrency, Config.MaxConcurrency)`
+- Default MaxConcurrency is `runtime.NumCPU()`
 
-linux \* go 1.23 で golangci-lint を実行する
+### Pattern Matching
 
-## coverage ジョブ
+Uses `github.com/bmatcuk/doublestar/v4` for minimatch-style glob patterns:
+- `**/*.jpg` - matches all JPG files recursively
+- `{*.jpg,*.png}` - matches multiple extensions
+- ExcludePatterns can skip directories entirely (e.g., `node_modules/**`)
 
-linux \* go 1.23 でテストカバレッジを取得する。
+### Error Handling
 
-## test ジョブ
+Two types of callbacks:
+- `FileCallback`: Returns `(continueProcessing bool, err error)`
+- `ErrorCallback`: Returns `(stop bool, retErr error)`
 
-[linux, macos, windows] \* [go 1.22, go 1.22]のマトリクスでテストする。カバレッジは不要。
+Both support graceful degradation and selective error handling.
 
-# README
+## CI/CD Configuration
 
-- README.md 英語
-- README.ja.md 日本語
+GitHub Actions workflow (`.github/workflows/ci.yml`):
+- **lint job**: Runs on Ubuntu with Go 1.23
+- **tests job**: Matrix of [Windows, Linux, macOS] × [Go 1.22, Go 1.23]
+- Triggers on push/PR to main and develop branches
+
+## Important Notes
+
+1. **Go Version Compatibility**: The package targets Go 1.22+ (uses traditional `for i := 0; i < n; i++` loops instead of `for range int` which requires Go 1.23)
+
+2. **Import Path**: After renaming, use `github.com/ideamans/go-mirror-transform` 
+
+3. **Config Pointer**: Always pass Config as a pointer to avoid large value copies:
+   ```go
+   mt, err := mirrortransform.NewMirrorTransform(&config)
+   ```
+
+4. **Context Usage**: Both Crawl and Watch methods respect context cancellation for graceful shutdown
+
+5. **File System Safety**: 
+   - Output directories are created automatically with 0o755 permissions
+   - Circular references between input/output are detected and prevented
+   - Path cleaning is applied to handle trailing slashes consistently
+
+## GitHub Repository
+
+- Repository: `ideamans/go-mirror-transform`
+- Teams with push access: `next-gen-image`, `go-ai-managed`

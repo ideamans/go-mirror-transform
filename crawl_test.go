@@ -137,6 +137,7 @@ func TestCrawlConcurrency(t *testing.T) {
 	concurrencyLevels := []int{1, 2, 4}
 
 	for _, concurrency := range concurrencyLevels {
+		concurrency := concurrency // capture range variable
 		t.Run(fmt.Sprintf("Concurrency_%d", concurrency), func(t *testing.T) {
 			t.Parallel()
 			testDir := t.TempDir()
@@ -294,6 +295,7 @@ func TestCrawlCircularReference(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt // capture range variable
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			config := Config{
@@ -479,6 +481,7 @@ func TestNewMirrorTransformValidation(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt // capture range variable
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := NewMirrorTransform(&tt.config)

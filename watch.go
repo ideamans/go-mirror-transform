@@ -229,16 +229,16 @@ func (mt *mirrorTransform) processWatchEvent(ctx context.Context, watcher *fsnot
 	// If it's a new directory, add it to the watcher
 	if info.IsDir() {
 		// Check if we need to watch this directory
-		relPath, err := filepath.Rel(mt.config.InputDir, event.Name)
-		if err != nil {
-			return fmt.Errorf("failed to get relative path for %q: %w", event.Name, err)
+		relPath, relErr := filepath.Rel(mt.config.InputDir, event.Name)
+		if relErr != nil {
+			return fmt.Errorf("failed to get relative path for %q: %w", event.Name, relErr)
 		}
 
 		// Check exclude patterns
 		for _, pattern := range mt.config.ExcludePatterns {
-			match, err := doublestar.Match(pattern, relPath)
-			if err != nil {
-				return fmt.Errorf("invalid exclude pattern %q: %w", pattern, err)
+			match, matchErr := doublestar.Match(pattern, relPath)
+			if matchErr != nil {
+				return fmt.Errorf("invalid exclude pattern %q: %w", pattern, matchErr)
 			}
 			if match {
 				return nil
@@ -246,8 +246,8 @@ func (mt *mirrorTransform) processWatchEvent(ctx context.Context, watcher *fsnot
 		}
 
 		// Add to watcher
-		if err := watcher.Add(event.Name); err != nil {
-			return fmt.Errorf("failed to add watch for new directory %q: %w", event.Name, err)
+		if addErr := watcher.Add(event.Name); addErr != nil {
+			return fmt.Errorf("failed to add watch for new directory %q: %w", event.Name, addErr)
 		}
 		return nil
 	}
@@ -260,9 +260,9 @@ func (mt *mirrorTransform) processWatchEvent(ctx context.Context, watcher *fsnot
 
 	// Check exclude patterns
 	for _, pattern := range mt.config.ExcludePatterns {
-		match, err := doublestar.Match(pattern, relPath)
-		if err != nil {
-			return fmt.Errorf("invalid exclude pattern %q: %w", pattern, err)
+		match, matchErr := doublestar.Match(pattern, relPath)
+		if matchErr != nil {
+			return fmt.Errorf("invalid exclude pattern %q: %w", pattern, matchErr)
 		}
 		if match {
 			return nil
@@ -272,9 +272,9 @@ func (mt *mirrorTransform) processWatchEvent(ctx context.Context, watcher *fsnot
 	// Check if file matches any pattern
 	matched := false
 	for _, pattern := range mt.config.Patterns {
-		match, err := doublestar.Match(pattern, relPath)
-		if err != nil {
-			return fmt.Errorf("invalid pattern %q: %w", pattern, err)
+		match, matchErr := doublestar.Match(pattern, relPath)
+		if matchErr != nil {
+			return fmt.Errorf("invalid pattern %q: %w", pattern, matchErr)
 		}
 		if match {
 			matched = true
@@ -297,4 +297,3 @@ func (mt *mirrorTransform) processWatchEvent(ctx context.Context, watcher *fsnot
 		return ctx.Err()
 	}
 }
-
