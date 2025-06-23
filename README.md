@@ -139,7 +139,7 @@ func main() {
 }
 ```
 
-### Combining Crawl and Watch
+### Combining Crawl and Watch with Timeout
 
 ```go
 package main
@@ -151,12 +151,17 @@ import (
     "os"
     "os/signal"
     "syscall"
+    "time"
     mirrortransform "github.com/ideamans/go-mirror-transform"
 )
 
 func main() {
-    var watchMode bool
+    var (
+        watchMode bool
+        timeout   time.Duration
+    )
     flag.BoolVar(&watchMode, "watch", false, "Enable watch mode")
+    flag.DurationVar(&timeout, "timeout", 60*time.Second, "Processing timeout")
     flag.Parse()
 
     config := mirrortransform.Config{
@@ -180,31 +185,47 @@ func main() {
         log.Fatal(err)
     }
 
-    // Setup graceful shutdown
-    ctx, cancel := context.WithCancel(context.Background())
+    // Create base context with timeout
+    ctx, cancel := context.WithTimeout(context.Background(), timeout)
     defer cancel()
 
+    // Setup signal handling for graceful shutdown
     sigCh := make(chan os.Signal, 1)
     signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+    
+    // Create a separate goroutine to handle signals
     go func() {
-        <-sigCh
-        log.Println("Shutting down gracefully...")
-        cancel()
+        select {
+        case <-sigCh:
+            log.Println("Interrupt signal received, shutting down...")
+            cancel()
+        case <-ctx.Done():
+            // Context cancelled by timeout or other reason
+        }
     }()
 
+    // Start processing
+    startTime := time.Now()
     if watchMode {
-        log.Println("Starting in watch mode. Press Ctrl+C to stop.")
+        log.Printf("Starting in watch mode. Will timeout in %v. Press Ctrl+C to stop.", timeout)
         err = mt.Watch(ctx)
     } else {
-        log.Println("Starting crawl. Press Ctrl+C to stop.")
+        log.Printf("Starting crawl. Will timeout in %v. Press Ctrl+C to stop.", timeout)
         err = mt.Crawl(ctx)
     }
 
-    if err != nil && err != context.Canceled {
-        log.Fatal(err)
+    // Handle different types of context cancellation
+    duration := time.Since(startTime)
+    switch {
+    case err == context.DeadlineExceeded:
+        log.Printf("Operation timed out after %v", duration)
+    case err == context.Canceled:
+        log.Printf("Operation cancelled after %v", duration)
+    case err != nil:
+        log.Fatalf("Operation failed: %v", err)
+    default:
+        log.Printf("Operation completed successfully in %v", duration)
     }
-    
-    log.Println("Shutdown complete")
 }
 ```
 

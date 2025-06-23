@@ -139,7 +139,7 @@ func main() {
 }
 ```
 
-### クロールとウォッチの組み合わせ
+### タイムアウト付きクロールとウォッチの組み合わせ
 
 ```go
 package main
@@ -151,12 +151,17 @@ import (
     "os"
     "os/signal"
     "syscall"
+    "time"
     mirrortransform "github.com/ideamans/go-mirror-transform"
 )
 
 func main() {
-    var watchMode bool
+    var (
+        watchMode bool
+        timeout   time.Duration
+    )
     flag.BoolVar(&watchMode, "watch", false, "ウォッチモードを有効化")
+    flag.DurationVar(&timeout, "timeout", 60*time.Second, "処理のタイムアウト時間")
     flag.Parse()
 
     config := mirrortransform.Config{
@@ -180,31 +185,47 @@ func main() {
         log.Fatal(err)
     }
 
-    // グレースフルシャットダウンの設定
-    ctx, cancel := context.WithCancel(context.Background())
+    // タイムアウト付きのベースコンテキストを作成
+    ctx, cancel := context.WithTimeout(context.Background(), timeout)
     defer cancel()
 
+    // グレースフルシャットダウンのためのシグナルハンドリング
     sigCh := make(chan os.Signal, 1)
     signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+    
+    // シグナルを処理する別のゴルーチンを作成
     go func() {
-        <-sigCh
-        log.Println("安全にシャットダウンしています...")
-        cancel()
+        select {
+        case <-sigCh:
+            log.Println("割り込みシグナルを受信しました。シャットダウンしています...")
+            cancel()
+        case <-ctx.Done():
+            // タイムアウトまたは他の理由でコンテキストがキャンセルされた
+        }
     }()
 
+    // 処理を開始
+    startTime := time.Now()
     if watchMode {
-        log.Println("ウォッチモードで起動しました。Ctrl+Cで停止します。")
+        log.Printf("ウォッチモードで起動しました。%v 後にタイムアウトします。Ctrl+Cで停止できます。", timeout)
         err = mt.Watch(ctx)
     } else {
-        log.Println("クロールを開始しました。Ctrl+Cで停止します。")
+        log.Printf("クロールを開始しました。%v 後にタイムアウトします。Ctrl+Cで停止できます。", timeout)
         err = mt.Crawl(ctx)
     }
 
-    if err != nil && err != context.Canceled {
-        log.Fatal(err)
+    // 異なるタイプのコンテキストキャンセルを処理
+    duration := time.Since(startTime)
+    switch {
+    case err == context.DeadlineExceeded:
+        log.Printf("%v 経過後にタイムアウトしました", duration)
+    case err == context.Canceled:
+        log.Printf("%v 経過後にキャンセルされました", duration)
+    case err != nil:
+        log.Fatalf("操作が失敗しました: %v", err)
+    default:
+        log.Printf("操作が %v で正常に完了しました", duration)
     }
-    
-    log.Println("シャットダウンが完了しました")
 }
 ```
 
